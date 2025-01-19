@@ -58,9 +58,9 @@ router.delete(
   "/:id",
   authMiddleware,
   async (req: AuthRequest, res: Response) => {
-    const postRepository = AppDataSource.getRepository(Post);
     const { id } = req.params;
 
+    const postRepository = AppDataSource.getRepository(Post);
     const post = await postRepository.findOne({
       where: { id: parseInt(id) },
       relations: ["author"],

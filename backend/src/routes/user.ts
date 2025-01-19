@@ -1,46 +1,13 @@
 import { Router, Request, Response } from "express";
-import { User } from "../db/entities";
+import { Token, User } from "../db/entities";
 import bcrypt from "bcryptjs";
-import { createJWT } from "../utils/jwt";
+import { createJWT, verifyJWT } from "../utils/jwt";
 import { AppDataSource } from "../db";
+import { authMiddleware, AuthRequest } from "../middleware";
 
 const router = Router();
 
-/**
- * @swagger
- * tags:
- *   name: Users
- *   description: Пользователи
- */
-
-/**
- * @swagger
- * /api/users/register:
- *   post:
- *     summary: Регистрация пользователя
- *     tags: [Users]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - username
- *               - password
- *             properties:
- *               username:
- *                 type: string
- *               password:
- *                 type: string
- *     responses:
- *       201:
- *         description: Пользователь зарегистрирован
- *       400:
- *         description: Ошибка в данных
- */
 router.post("/register", async (req: Request, res: Response) => {
-  const userRepository = AppDataSource.getRepository(User);
   const { username, password } = req.body;
 
   if (!(username && password)) {
@@ -48,6 +15,7 @@ router.post("/register", async (req: Request, res: Response) => {
     return;
   }
 
+  const userRepository = AppDataSource.getRepository(User);
   const existingUser = await userRepository.findOne({ where: { username } });
   if (existingUser) {
     res.status(400).json({ message: "Username already exists" });
@@ -61,32 +29,6 @@ router.post("/register", async (req: Request, res: Response) => {
   res.status(201).json({ message: "User registered successfully" });
 });
 
-/**
- * @swagger
- * /api/users/login:
- *   post:
- *     summary: Логин пользователя
- *     tags: [Users]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - username
- *               - password
- *             properties:
- *               username:
- *                 type: string
- *               password:
- *                 type: string
- *     responses:
- *       200:
- *         description: Успешный логин
- *       400:
- *         description: Неверные учетные данные
- */
 router.post("/login", async (req: Request, res: Response) => {
   const userRepository = AppDataSource.getRepository(User);
   const { username, password } = req.body;
@@ -108,8 +50,83 @@ router.post("/login", async (req: Request, res: Response) => {
     return;
   }
 
-  const token = createJWT({ id: user.id, username: user.username });
-  res.json({ token });
+  const payload = { id: user.id };
+  const accessToken = createJWT(payload, 15 * 60, process.env.JWT_ACCESS);
+  const refreshToken = createJWT(
+    payload,
+    30 * 24 * 60 * 60,
+    process.env.JWT_REFRESH,
+  );
+
+  const tokenRepository = AppDataSource.getRepository(Token);
+  const token = await tokenRepository.findOneBy({ user });
+  if (token) {
+    token.refresh = refreshToken;
+    await tokenRepository.save(token);
+  } else {
+    const newToken = tokenRepository.create({ user, refresh: refreshToken });
+    await tokenRepository.save(newToken);
+  }
+
+  res.cookie("refreshToken", refreshToken, {
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+    httpOnly: true,
+  });
+
+  res.json({ token: accessToken, user: { username: user.username } });
+});
+
+router.post("/logout", authMiddleware, async (req: AuthRequest, res) => {
+  const tokenRepository = AppDataSource.getRepository(Token);
+  await tokenRepository.delete({ user: req.user });
+
+  res.status(200).json({ message: "Logout completed" });
+});
+
+router.get("/refresh", async (req: AuthRequest, res) => {
+  try {
+    const { refreshToken } = req.cookies;
+
+    if (!refreshToken) {
+      res.status(401).json({ message: "Token missing" });
+      return;
+    }
+
+    const payload = verifyJWT(refreshToken, process.env.JWT_REFRESH);
+    if (!payload) {
+      res.status(401).json({ message: "Invalid or expired token" });
+      return;
+    }
+
+    const tokenRepository = AppDataSource.getRepository(Token);
+    const token = await tokenRepository.findOne({
+      where: { refresh: refreshToken },
+      relations: ["user"],
+    });
+    if (!token || !token.user) {
+      res.status(401).json({ message: "Invalid or expired token" });
+      return;
+    }
+
+    const accessToken = createJWT(payload, 15 * 60, process.env.JWT_ACCESS);
+    const newRefreshToken = createJWT(
+      payload,
+      30 * 24 * 60 * 60,
+      process.env.JWT_REFRESH,
+    );
+
+    token.refresh = newRefreshToken;
+    await tokenRepository.save(token);
+
+    res.cookie("refreshToken", newRefreshToken, {
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      httpOnly: true,
+    });
+    res.json({ token: accessToken, user: { username: token.user.username } });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal server error" });
+  }
 });
 
 export default router;

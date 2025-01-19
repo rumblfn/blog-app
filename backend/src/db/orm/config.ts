@@ -1,5 +1,5 @@
 import { DataSourceOptions } from "typeorm";
-import { User, Post } from "../entities";
+import { User, Post, Token } from "../entities";
 
 export const config: DataSourceOptions = {
   type: "postgres",
@@ -8,7 +8,7 @@ export const config: DataSourceOptions = {
   username: process.env.DB_USERNAME,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  entities: [User, Post],
+  entities: [User, Post, Token],
   synchronize: true,
-  logging: true,
+  logging: false,
 };

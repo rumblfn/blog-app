@@ -24,7 +24,7 @@ export async function authMiddleware(
     return;
   }
 
-  const payload = verifyJWT(token);
+  const payload = verifyJWT(token, process.env.JWT_ACCESS);
   if (!payload) {
     res.status(401).json({ message: "Invalid or expired token" });
     return;

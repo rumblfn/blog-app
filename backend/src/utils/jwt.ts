@@ -5,9 +5,11 @@ interface JWTPayload {
   exp: number;
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || "default_secret";
-
-export function createJWT(payload: object, expiresIn: number = 3600): string {
+export function createJWT(
+  payload: object,
+  expiresIn: number,
+  secret: string,
+): string {
   const header = Buffer.from(
     JSON.stringify({ alg: "HS256", typ: "JWT" }),
   ).toString("base64");
@@ -18,16 +20,16 @@ export function createJWT(payload: object, expiresIn: number = 3600): string {
     }),
   ).toString("base64");
   const signature = crypto
-    .createHmac("sha256", JWT_SECRET)
+    .createHmac("sha256", secret)
     .update(`${header}.${body}`)
     .digest("base64");
   return `${header}.${body}.${signature}`;
 }
 
-export function verifyJWT(token: string): JWTPayload | null {
+export function verifyJWT(token: string, secret: string): JWTPayload | null {
   const [headerB64, bodyB64, signature] = token.split(".");
   const expectedSignature = crypto
-    .createHmac("sha256", JWT_SECRET)
+    .createHmac("sha256", secret)
     .update(`${headerB64}.${bodyB64}`)
     .digest("base64");
   if (signature !== expectedSignature) return null;

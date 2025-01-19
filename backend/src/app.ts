@@ -1,9 +1,12 @@
 import express from "express";
 import dotenv from "dotenv";
+import cors from "cors";
+import cookieParser from "cookie-parser";
 
 import "reflect-metadata";
 import { AppDataSource } from "./db";
-import { setupRoutes } from "./handlers/setupRoutes";
+import { configureRoutes } from "./routes";
+import { corsOptions } from "./utils/corsOptions";
 
 dotenv.config();
 
@@ -12,10 +15,12 @@ const port = process.env.PORT;
 const app = express();
 
 app.use(express.json());
+app.use(cookieParser());
+app.use(cors(corsOptions));
 
 app.set("view engine", "ejs");
 
-setupRoutes(app);
+configureRoutes(app);
 
 AppDataSource.initialize()
   .then(() => {
