@@ -36,14 +36,15 @@ services:
       - ./backend:/app
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        - VITE_HOST_URL=http://backend:${BACKEND_PORT}
+        - NODE_ENV=production
     ports:
       - '5173:5173'
     volumes:
       - ./frontend:/app
-    environment:
-      VITE_HOST_URL: http://backend:${BACKEND_PORT}
-      NODE_ENV: production
 
 volumes:
   postgres_data-blog_db:
